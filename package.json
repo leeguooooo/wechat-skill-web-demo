@@ -1,0 +1,37 @@
+{
+  "name": "wechat-skill-web-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Web-based WeChat-clone demo using wechaty SDK + wechaty-puppet-service",
+  "scripts": {
+    "dev": "concurrently -n vite,server -c blue,green \"npm:dev:client\" \"npm:dev:server\"",
+    "dev:client": "vite",
+    "dev:server": "tsx watch src/server/index.ts",
+    "build": "vite build && tsc -p tsconfig.server.json",
+    "start": "node dist-server/server/index.js",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "wechaty": "1.20.2",
+    "wechaty-puppet-service": "1.19.9",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "@tsconfig/svelte": "^5.0.4",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.5.0",
+    "@types/ws": "^8.5.12",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.0.0",
+    "postcss": "^8.4.47",
+    "svelte": "^5.0.0",
+    "svelte-check": "^4.0.0",
+    "tailwindcss": "^3.4.13",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0"
+  }
+}
