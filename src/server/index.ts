@@ -7,9 +7,11 @@ import type { Message } from 'wechaty';
 import { getWechaty, getLoginState, onLoginStateChange } from './wechaty.js';
 import {
   ensureSession,
+  flushCacheSync,
   getThread,
   ingest,
   listSessions,
+  loadCache,
   patchMessageImage,
   setActiveConversation,
 } from './sessions.js';
@@ -151,6 +153,20 @@ async function bootstrapWechaty(): Promise<void> {
 
 // ---- HTTP server boot ------------------------------------------------------
 
+// Hydrate sessions from the on-disk cache before wechaty connects. Standard
+// wechaty pattern: sessions are accumulated client-side from `on('message')`
+// (the puppet protocol is stateless), so we persist between runs ourselves.
+// First-ever launch sees no cache file → starts empty, fills in as messages
+// arrive. Second launch onward → sidebar populated within ms.
+const hydrate = loadCache();
+console.log(
+  `[sessions] cache: ${
+    hydrate.loaded
+      ? `loaded ${hydrate.sessionCount} sessions`
+      : 'no cache (first launch — sessions will populate as messages arrive)'
+  }`,
+);
+
 const server = http.createServer(app);
 hub.attach(server);
 
@@ -164,11 +180,14 @@ bootstrapWechaty().catch((err) => {
   // Surface to UIs that connect later.
 });
 
-// Graceful shutdown — leave wechaty running across browser disconnects, but
-// stop on SIGINT/SIGTERM.
+// Graceful shutdown — flush cache, then close server.
 function shutdown(signal: string) {
-  console.log(`[server] received ${signal}, shutting down`);
+  console.log(`[server] received ${signal}, flushing cache + shutting down`);
+  flushCacheSync();
   server.close(() => process.exit(0));
+  // Hard-exit fallback in case server.close hangs on stuck WS clients.
+  setTimeout(() => process.exit(0), 2000).unref();
 }
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('beforeExit', () => flushCacheSync());
