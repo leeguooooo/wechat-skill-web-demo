@@ -10,8 +10,10 @@ import { WechatyBuilder, type Wechaty } from 'wechaty';
 import { PuppetService } from 'wechaty-puppet-service';
 import type { LoginState } from '../shared/types.js';
 
-const ENDPOINT = process.env.WECHATY_GATEWAY_ENDPOINT ?? '127.0.0.1:18401';
-const TOKEN = process.env.WECHATY_GATEWAY_TOKEN ?? 'puppet_workpro_local';
+const ENDPOINT = process.env.WECHATY_ENDPOINT ?? process.env.WECHATY_GATEWAY_ENDPOINT ?? '127.0.0.1:18401';
+const TOKEN    = process.env.WECHATY_TOKEN    ?? process.env.WECHATY_GATEWAY_TOKEN    ?? 'puppet_workpro_local';
+// WECHATY_TLS_DISABLE=false to enable TLS (e.g. when the remote gateway uses TLS termination)
+const TLS_DISABLE = (process.env.WECHATY_TLS_DISABLE ?? 'true') === 'true';
 
 export type LoginListener = (state: LoginState) => void;
 
@@ -44,7 +46,7 @@ function buildPuppet() {
   return new PuppetService({
     token: TOKEN,
     endpoint: ENDPOINT,
-    tls: { disable: true, serverName: 'localhost' },
+    tls: TLS_DISABLE ? { disable: true, serverName: 'localhost' } : {},
   });
 }
 

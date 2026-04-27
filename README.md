@@ -67,9 +67,10 @@ Environment variables (all optional):
 
 | Var | Default | Meaning |
 |---|---|---|
-| `WECHATY_GATEWAY_ENDPOINT` | `127.0.0.1:18401` | Gateway gRPC address. |
-| `WECHATY_GATEWAY_TOKEN`    | `puppet_workpro_local` | Puppet token (placeholder; gateway doesn't enforce). |
-| `PORT`                     | `8787`            | Local Node server port. |
+| `WECHATY_ENDPOINT` | `127.0.0.1:18401` | Gateway gRPC address (`host:port`). Alias: `WECHATY_GATEWAY_ENDPOINT`. |
+| `WECHATY_TOKEN`    | `puppet_workpro_local` | Puppet token (placeholder; gateway doesn't enforce). Alias: `WECHATY_GATEWAY_TOKEN`. |
+| `WECHATY_TLS_DISABLE` | `true` | Set to `false` to enable TLS on the gRPC connection. |
+| `PORT`             | `8787`            | Local Node server port. |
 
 ## Scripts
 
@@ -97,6 +98,58 @@ wechaty.on('message', async (msg) => {
 That's the whole point of going through the wechaty protocol: any of the
 hundreds of existing wechaty plugins / examples works against `wechat-skill`
 unmodified.
+
+## 远程部署（用户自托管）
+
+v1.11 之后 `wechat-skill` 支持通过 Cloudflare Tunnel 把本机微信暴露给远程服务。
+不过这对 web-demo 有一个**重要限制**，必须如实说明：
+
+### v1.11 暴露的是 REST 桥，不是 gRPC
+
+| 接口 | 本地地址 | v1.11 是否通过 Tunnel 对外暴露 |
+|---|---|---|
+| gRPC puppet gateway | `127.0.0.1:18401` | **否**（留 v1.12） |
+| REST 桥 | `127.0.0.1:18402` | **是** |
+
+web-demo 的 Node server 用的是 `wechaty-puppet-service`（gRPC 协议），  
+而 v1.11 的 Cloudflare Tunnel 只暴露 REST 桥。  
+因此 **v1.11 阶段，web-demo 远程部署只能跟 Mac 同 LAN**（直连 `<mac-ip>:18401`）；  
+公网远程接入需等 **v1.12**（gRPC-over-Tunnel + grpc-web 支持）。
+
+### 同 LAN 部署步骤（VPS / 树莓派 / 家庭服务器）
+
+如果你的 web-demo 服务器和 Mac 在同一局域网（或通过 Tailscale 互通），  
+只需设置以下环境变量指向 Mac 的 IP：
+
+```bash
+# Mac 本机 IP（System Settings → Network 查看，或 ip addr）
+export WECHATY_ENDPOINT=192.168.1.10:18401
+export WECHATY_TOKEN=puppet_workpro_local
+export WECHATY_TLS_DISABLE=true
+
+npm start
+```
+
+或者通过 `.env` 文件 / 部署平台（Render / Railway / Dokku）的环境变量面板设置。
+
+### 环境变量参考
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `WECHATY_ENDPOINT` | `127.0.0.1:18401` | gRPC puppet gateway 地址（`host:port`） |
+| `WECHATY_TOKEN` | `puppet_workpro_local` | Puppet token（占位符，gateway 不校验值） |
+| `WECHATY_TLS_DISABLE` | `true` | 设为 `false` 启用 TLS（同 LAN 一般保持 `true`） |
+| `PORT` | `8787` | Node server 监听端口 |
+
+> 旧变量 `WECHATY_GATEWAY_ENDPOINT` / `WECHATY_GATEWAY_TOKEN` 仍被向后兼容识别，
+> 但推荐迁移到新名称 `WECHATY_ENDPOINT` / `WECHATY_TOKEN`。
+
+### 公网远程接入（v1.12 计划）
+
+v1.12 会在 Cloudflare Tunnel 上同时暴露 gRPC-web，届时 web-demo 可以不依赖同 LAN
+直接面向公网部署，配置只需改 `WECHATY_ENDPOINT` 指向 tunnel 地址。
+
+---
 
 ## Roadmap (deferred for v2)
 
