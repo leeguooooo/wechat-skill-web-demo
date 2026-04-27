@@ -53,10 +53,13 @@ export async function resolveConversation(
   const room = msg.room();
   if (room) {
     const topic = await room.topic().catch(() => undefined);
+    // memberAll() is cached by wechaty after the first call per room.
+    const members = await room.memberAll().catch(() => undefined);
     return {
       id: room.id,
       kind: 'room' as ConversationKind,
       displayName: topic || room.id,
+      memberCount: members?.length,
     };
   }
   // DM: conversation id is the *counterparty* contact, not the self id.

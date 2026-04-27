@@ -38,6 +38,7 @@ export interface ConversationRef {
   id: string;
   kind: ConversationKind;
   displayName: string;
+  memberCount?: number;
 }
 
 interface SessionState {
@@ -66,6 +67,9 @@ interface CacheFile {
     /// so reopening a chat after restart shows context immediately.
     /// v2+ schema; v1 cache files miss this and start with [] threads.
     thread?: MessageRecord[];
+    /// Group member count, optional. Populated after login from
+    /// `room.memberAll().length` and refreshed on each incoming message.
+    memberCount?: number;
   }>;
 }
 
@@ -92,7 +96,10 @@ export function loadCache(): { loaded: boolean; sessionCount: number } {
     }
     for (const entry of parsed.sessions) {
       sessions.set(entry.ref.id, {
-        ref: { ...entry.ref },
+        ref: {
+          ...entry.ref,
+          memberCount: entry.memberCount ?? entry.ref.memberCount,
+        },
         lastPreview: entry.lastPreview,
         lastTs: entry.lastTs,
         unread: entry.unread,
@@ -118,6 +125,7 @@ function flushCache(): void {
       lastTs: s.lastTs,
       unread: s.unread,
       thread: s.thread.slice(-CACHED_THREAD_TAIL),
+      memberCount: s.ref.memberCount,
     })),
   };
   try {
@@ -202,6 +210,7 @@ export function summarize(state: SessionState): SessionSummary {
     lastPreview: state.lastPreview || '(暂无消息)',
     lastTs: state.lastTs,
     unread: state.unread,
+    memberCount: state.ref.memberCount,
   };
 }
 
@@ -220,6 +229,7 @@ export function ingest(ref: ConversationRef, msg: MessageRecord): SessionSummary
     // Refresh display name in case room topic / contact name changed.
     s.ref.displayName = ref.displayName;
     s.ref.kind = ref.kind;
+    if (ref.memberCount !== undefined) s.ref.memberCount = ref.memberCount;
   }
   // De-dup by id (wechaty can occasionally re-emit the same message during recovery).
   if (!s.thread.some((m) => m.id === msg.id)) {
@@ -260,6 +270,28 @@ export function ensureSession(ref: ConversationRef): SessionSummary {
     sessions.set(ref.id, s);
   }
   return summarize(s);
+}
+
+/// Walk all known room sessions and update memberCount via the supplied
+/// async lookup. Designed to be called once after wechaty login so that
+/// rooms hydrated from the on-disk cache (which predates the field) get
+/// their `(N)` count populated for the chat header.
+export async function backfillRoomMemberCounts(
+  fetch: (roomId: string) => Promise<number | undefined>,
+): Promise<void> {
+  let touched = 0;
+  for (const s of sessions.values()) {
+    if (s.ref.kind !== 'room') continue;
+    if (typeof s.ref.memberCount === 'number') continue;
+    const n = await fetch(s.ref.id).catch(() => undefined);
+    if (typeof n === 'number') {
+      s.ref.memberCount = n;
+      touched += 1;
+    }
+  }
+  if (touched > 0) {
+    scheduleFlush();
+  }
 }
 
 export function patchMessageImage(messageId: string, dataUrl: string): MessageRecord | null {

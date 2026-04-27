@@ -6,6 +6,7 @@ import type { Request, Response } from 'express';
 import type { Message } from 'wechaty';
 import { getWechaty, getLoginState, onLoginStateChange } from './wechaty.js';
 import {
+  backfillRoomMemberCounts,
   ensureSession,
   flushCacheSync,
   getThread,
@@ -196,6 +197,21 @@ async function bootstrapWechaty(): Promise<void> {
       hub.broadcast(evt);
     } catch (err) {
       console.error('[server] message handler error:', err);
+    }
+  });
+  // Backfill member counts for cached rooms so the chat header shows "(N)"
+  // even before any new message arrives. Runs once login is established.
+  wechaty.on('login', async () => {
+    try {
+      await backfillRoomMemberCounts(async (roomId) => {
+        const room = await wechaty.Room.find({ id: roomId }).catch(() => null);
+        if (!room) return undefined;
+        const members = await room.memberAll().catch(() => undefined);
+        return members?.length;
+      });
+      hub.broadcast({ type: 'sessions-snapshot', sessions: listSessions() });
+    } catch (err) {
+      console.error('[server] member-count backfill failed:', err);
     }
   });
 }

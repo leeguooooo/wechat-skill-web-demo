@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { store } from '$lib/client/store';
-  import Header from './lib/client/Header.svelte';
+  import NavRail from './lib/client/NavRail.svelte';
   import SessionList from './lib/client/SessionList.svelte';
   import ChatThread from './lib/client/ChatThread.svelte';
 
@@ -22,14 +22,12 @@
   const _ = $derived(tick); // keep `tick` reactive in template
 </script>
 
-<div class="flex h-full flex-col">
-  <Header />
-  <div class="flex flex-1 overflow-hidden">
-    <aside class="w-72 shrink-0 border-r border-gray-300 bg-wechat-panel">
-      <SessionList />
-    </aside>
-    <main class="flex flex-1 flex-col bg-wechat-chat">
-      <ChatThread />
-    </main>
-  </div>
+<div class="flex h-full bg-wechat-chat-bg">
+  <NavRail />
+  <aside class="w-80 shrink-0 border-r border-wechat-border bg-wechat-panel">
+    <SessionList />
+  </aside>
+  <main class="flex flex-1 flex-col overflow-hidden bg-wechat-chat-bg">
+    <ChatThread />
+  </main>
 </div>

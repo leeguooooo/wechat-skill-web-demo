@@ -13,6 +13,8 @@ export interface SessionSummary {
   /** ms epoch of last message, or 0 if none. */
   lastTs: number;
   unread: number;
+  /** Group member count, surfaced as "Topic (N)" in the chat header. */
+  memberCount?: number;
 }
 
 export type MessageDisplayKind = 'text' | 'image' | 'video' | 'audio' | 'file' | 'other';

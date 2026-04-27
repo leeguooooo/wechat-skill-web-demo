@@ -1,10 +1,12 @@
 # wechat-skill-web-demo
 
-A small web-based WeChat-clone demo that talks to the
+A WeChat-clone web UI that talks to the
 [`wechat-skill`](https://github.com/leeguooooo/wechat-skill) gateway through the
-official **wechaty SDK** (`wechaty` + `wechaty-puppet-service`). Any wechaty
-bot author can use this as a starting point for a browser UI on top of the
+official **wechaty SDK** (`wechaty` + `wechaty-puppet-service`). Drop-in
+starting point for any wechaty bot author who wants a browser UI on top of the
 skill.
+
+![web demo](docs/images/web-demo.png)
 
 > Dev-only. Binds to `127.0.0.1` and has no auth. Put behind a reverse proxy
 > with real auth before exposing it.
@@ -38,15 +40,26 @@ bot that happens to publish its events to a websocket.
 
 ## What it does
 
-- Sessions panel (left): recent chats sorted by last activity, with unread
-  badge, last-message preview (≤30 chars) and a hash-coloured initial avatar.
-- Message thread (right): last 50 messages, self-sent right-aligned in green,
-  inbound left-aligned in white, group messages prefixed with sender name.
-- Image messages: rendered as thumbnails (`Message.toImage().thumbnail()`),
-  cached in an LRU of 100 entries on the server.
-- Live updates: server fans out wechaty `message` events over WebSocket.
-- Send box: `Enter` sends. Optimistic local rendering, reconciled when the
-  wechaty echo comes back.
+- **NavRail (left)**: dark macOS-WeChat-style rail with chat / contacts /
+  favorites / moments / 看一看 / 视频号 / 直播 / 小程序 / 手机 / settings.
+  Avatar at top with a colored status dot.
+- **Sessions panel**: recent chats sorted by last activity, with unread badge,
+  last-message preview (≤30 chars), 48px rounded avatar. Unified rounded
+  search pill at top.
+- **Chat thread (right)**: header shows topic + member count `(N)` for
+  groups; messages render with avatar + sender name above each inbound
+  bubble; self-sent bubbles right-aligned green (`#95EC69`); time dividers
+  every 5 min in WeChat style (`昨天 20:15` / `周一 11:32`).
+- **Image messages**: rendered as thumbnails
+  (`Message.toImage().thumbnail()`), cached in an LRU of 100 entries on
+  the server, lazy-loaded when scrolled into view (IntersectionObserver).
+- **Live updates**: server fans out wechaty `message` events over WebSocket.
+- **Send box**: `Enter` sends. Optimistic local rendering, reconciled when
+  the wechaty echo comes back.
+- **Persistence**: sessions + last 50 messages per thread are written to
+  `~/.wechat-skill-web-demo/sessions.json` (debounced 5 s), so the sidebar
+  populates within ms on next launch — wechaty puppet is intentionally
+  push-only, so we accumulate state ourselves.
 
 ## Configuration
 
@@ -67,15 +80,32 @@ Environment variables (all optional):
 | `npm start` | Run the compiled server (serves nothing static — pair with a static host or extend `index.ts`). |
 | `npm run typecheck` | `tsc --noEmit` for both client and server projects. |
 
+## Build your own bot on top
+
+Because the Node server is just a normal wechaty client, you can fork this repo
+and replace the WebSocket fan-out with your bot logic. The full wechaty API is
+available — `wechaty.on('message', …)`, `room.say(…)`, `contact.say(…)`, etc.
+
+```ts
+import { getWechaty } from './src/server/wechaty.js';
+const wechaty = await getWechaty();
+wechaty.on('message', async (msg) => {
+  if (msg.text() === 'ping') await msg.say('pong');
+});
+```
+
+That's the whole point of going through the wechaty protocol: any of the
+hundreds of existing wechaty plugins / examples works against `wechat-skill`
+unmodified.
+
 ## Roadmap (deferred for v2)
 
+- Historical message backfill (wechaty puppet has no `listMessages` API; would
+  require a non-standard `MessageHistory` RPC on the gateway that queries the
+  daemon's SQLCipher DB)
 - Sending images / files (gateway upload RPC unimplemented)
 - Friend requests, room create / invite
 - Message recall / forward / quote-reply
 - Multi-account login
 - Real auth + production deploy guide
 - Voice playback
-
-## Screenshot
-
-*(placeholder — drop a screenshot at `docs/screenshot.png` once you have one)*
