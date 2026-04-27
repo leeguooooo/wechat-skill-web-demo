@@ -111,25 +111,42 @@ async function sendText(conversationId: string, text: string): Promise<void> {
 }
 
 async function fetchImage(messageId: string): Promise<void> {
+  console.log('[image] fetch request for', messageId);
   const cached = getCached(messageId);
   if (cached) {
+    console.log('[image] cache hit for', messageId);
     const updated = patchMessageImage(messageId, cached);
     if (updated) hub.broadcast({ type: 'image-ready', messageId, imageDataUrl: cached });
     return;
   }
   const wechaty = await getWechaty();
-  const msg = await wechaty.Message.find({ id: messageId }).catch(() => null);
-  if (!msg) return;
-  if (msg.type() !== wechaty.Message.Type.Image) return;
+  let msg;
+  try {
+    msg = await wechaty.Message.find({ id: messageId });
+  } catch (err) {
+    console.error('[image] Message.find failed for', messageId, ':', (err as Error).message);
+    return;
+  }
+  if (!msg) {
+    console.warn('[image] Message.find returned null for', messageId, '— message id may have aged out of gateway LRU');
+    return;
+  }
+  if (msg.type() !== wechaty.Message.Type.Image) {
+    console.warn('[image] not an image message:', messageId, 'type=', msg.type());
+    return;
+  }
   try {
     const fb = await msg.toImage().thumbnail();
     const buf = await fb.toBuffer();
     const dataUrl = `data:image/jpeg;base64,${buf.toString('base64')}`;
+    console.log('[image] fetched', messageId, `(${buf.length}B)`);
     setCached(messageId, dataUrl);
     patchMessageImage(messageId, dataUrl);
     hub.broadcast({ type: 'image-ready', messageId, imageDataUrl: dataUrl });
   } catch (err) {
-    console.error('[server] image fetch failed for', messageId, err);
+    const e = err as Error & { code?: number; details?: string };
+    console.error('[image] toImage/thumbnail/toBuffer failed for', messageId,
+      'code=', e.code, 'message=', e.message, 'details=', e.details);
   }
 }
 
