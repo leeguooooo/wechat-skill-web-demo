@@ -28,6 +28,11 @@ class Store {
   threads: Map<string, MessageRecord[]> = new Map();
   // optimistic messages keyed by clientNonce, awaiting server echo
   pendingNonces: Set<string> = new Set();
+  // Last seen "logged-in" user info, retained across transient gRPC errors
+  // so we can recover the header label silently when wechaty reconnects.
+  // Without this, a single RST_STREAM leaves the UI stuck displaying the
+  // gRPC error string forever even though messages keep flowing.
+  private lastGoodUser: { userId: string; userName: string } | null = null;
 
   private listeners = new Set<Listener>();
   private ws: WebSocket | null = null;
@@ -92,6 +97,12 @@ class Store {
       const body = await r.json();
       this.sessions = body.sessions ?? [];
       this.loginState = body.loginState ?? this.loginState;
+      if (this.loginState.status === 'logged-in') {
+        this.lastGoodUser = {
+          userId: this.loginState.userId,
+          userName: this.loginState.userName,
+        };
+      }
       this.notify();
     } catch (err) {
       console.error('[fetch] sessions failed', err);
@@ -147,9 +158,27 @@ class Store {
   }
 
   private handleEvent(evt: any) {
+    // Any non-error event means the wechaty pipeline is alive again — recover
+    // a sticky 'error' loginState back to 'logged-in' using the last good
+    // user info. Wechaty surfaces transient gRPC errors (e.g. RST_STREAM)
+    // through `on('error')` even when the underlying stream auto-recovers,
+    // so without this the header is stuck red forever.
+    if (
+      this.loginState.status === 'error' &&
+      evt.type !== 'error' &&
+      this.lastGoodUser
+    ) {
+      this.loginState = { status: 'logged-in', ...this.lastGoodUser };
+    }
     switch (evt.type) {
       case 'login-state':
         this.loginState = evt.state;
+        if (evt.state.status === 'logged-in') {
+          this.lastGoodUser = {
+            userId: evt.state.userId,
+            userName: evt.state.userName,
+          };
+        }
         this.notify();
         break;
       case 'sessions-snapshot':

@@ -24,12 +24,14 @@ import type {
 
 const PREVIEW_LIMIT = 30;
 const THREAD_CAP = 200;
-/// Threads are heavy (200 messages × N sessions) — only persist the
-/// session metadata. Threads rebuild from the live event stream as the
-/// user scrolls active conversations. This keeps the cache file < 100KB
-/// even for users with thousands of historical chats.
+/// How many tail messages of each thread to persist on disk. The full
+/// in-memory thread is bounded at THREAD_CAP=200; we save the last 50
+/// to keep the cache file tractable while still letting the user open
+/// any cached chat and immediately see context (instead of "(empty)"
+/// until the next live message arrives).
+const CACHED_THREAD_TAIL = 50;
 const CACHE_FILE = join(homedir(), '.wechat-skill-web-demo', 'sessions.json');
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const FLUSH_DEBOUNCE_MS = 5_000;
 
 export interface ConversationRef {
@@ -60,6 +62,10 @@ interface CacheFile {
     lastPreview: string;
     lastTs: number;
     unread: number;
+    /// Tail of the conversation (last CACHED_THREAD_TAIL records), persisted
+    /// so reopening a chat after restart shows context immediately.
+    /// v2+ schema; v1 cache files miss this and start with [] threads.
+    thread?: MessageRecord[];
   }>;
 }
 
@@ -90,7 +96,7 @@ export function loadCache(): { loaded: boolean; sessionCount: number } {
         lastPreview: entry.lastPreview,
         lastTs: entry.lastTs,
         unread: entry.unread,
-        thread: [], // not persisted; rebuilds from live events as user opens chats
+        thread: Array.isArray(entry.thread) ? entry.thread.slice() : [],
       });
     }
     return { loaded: true, sessionCount: sessions.size };
@@ -111,6 +117,7 @@ function flushCache(): void {
       lastPreview: s.lastPreview,
       lastTs: s.lastTs,
       unread: s.unread,
+      thread: s.thread.slice(-CACHED_THREAD_TAIL),
     })),
   };
   try {
