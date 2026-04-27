@@ -81,7 +81,30 @@ export function makeRecord(
   const isSelf = msg.self();
   const talker = msg.talker();
   const senderName = talker?.name() || talker?.id || (isSelf ? 'Me' : 'Unknown');
-  const text = kind === 'text' ? (msg.text() || '') : placeholderText(kind);
+  // Text resolution priority:
+  //   1. msg.text() if non-empty AND not a raw XML payload — wechaty exposes
+  //      our gateway's `display_text` field (daemon classifier already
+  //      extracted titles for url / miniprogram / appmsg / system). For
+  //      `text` kind this IS the body. For `url` / `mini_program` / `system`
+  //      it's the human-readable title — much better than "[消息]".
+  //   2. `[图片] / [视频] / [语音] / [文件]` placeholder for binary kinds
+  //      where the user clicks to fetch the actual bytes via WS.
+  //   3. "[消息]" as last-resort for genuinely opaque content.
+  // Raw XML check: WeChat's appmsg/sysmsg messages start with `<` when
+  // unparsed; we never want those in the UI bubble.
+  const rawText = (msg.text() || '').trim();
+  const isXml = rawText.startsWith('<');
+  let text: string;
+  if (rawText && !isXml) {
+    text = rawText;
+  } else if (kind === 'image' || kind === 'video' || kind === 'audio' || kind === 'file') {
+    // Binary kinds: keep the type placeholder so UI knows to render
+    // the "tap to load" affordance instead of dumping XML.
+    text = placeholderText(kind);
+  } else {
+    // text kind with empty body, or rich kind with no extractable title.
+    text = placeholderText(kind);
+  }
   return {
     id: msg.id,
     conversationId: ref.id,

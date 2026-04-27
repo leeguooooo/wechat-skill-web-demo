@@ -164,30 +164,34 @@ export function getActiveConversationId(): string | null {
 }
 
 function previewOf(msg: MessageRecord): string {
+  // For binary kinds we keep the icon-style placeholder so the sidebar shows
+  // "[图片]" / "[视频]" — the actual bytes are too big for a 30-char preview.
+  // For everything else (text + url/miniprogram/system/etc with extracted
+  // titles in msg.text), prefer the real text. msg.text was set in
+  // messages.ts → only contains a placeholder when truly empty.
+  const binary = msg.kind === 'image' || msg.kind === 'video'
+    || msg.kind === 'audio' || msg.kind === 'file';
   let text: string;
-  switch (msg.kind) {
-    case 'image':
-      text = '[图片]';
-      break;
-    case 'video':
-      text = '[视频]';
-      break;
-    case 'audio':
-      text = '[语音]';
-      break;
-    case 'file':
-      text = '[文件]';
-      break;
-    case 'other':
-      text = '[消息]';
-      break;
-    default:
-      text = msg.text || '';
+  if (binary) {
+    text = placeholderForKind(msg.kind);
+  } else {
+    text = msg.text || placeholderForKind(msg.kind);
   }
   if (text.length > PREVIEW_LIMIT) {
     return text.slice(0, PREVIEW_LIMIT - 1) + '…';
   }
   return text;
+}
+
+function placeholderForKind(kind: MessageRecord['kind']): string {
+  switch (kind) {
+    case 'image': return '[图片]';
+    case 'video': return '[视频]';
+    case 'audio': return '[语音]';
+    case 'file': return '[文件]';
+    case 'other': return '[消息]';
+    default: return '';
+  }
 }
 
 export function summarize(state: SessionState): SessionSummary {
