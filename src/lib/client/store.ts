@@ -144,9 +144,13 @@ class Store {
       text: trimmed,
       ts: Date.now(),
     };
-    const arr = this.threads.get(conversationId) ?? [];
-    arr.push(optimistic);
-    this.threads.set(conversationId, arr);
+    // Important: build a NEW array. Svelte 5 `$derived.by` uses Object.is
+    // to detect whether a derived value changed; mutating the existing
+    // array in place returns the same reference and the UI doesn't
+    // re-render (=> optimistic bubble never appears, even though the
+    // server-side send + cache update are correct).
+    const prev = this.threads.get(conversationId) ?? [];
+    this.threads.set(conversationId, [...prev, optimistic]);
     this.pendingNonces.add(clientNonce);
     this.notify();
 
@@ -182,34 +186,32 @@ class Store {
         this.notify();
         break;
       case 'sessions-snapshot':
-        this.sessions = evt.sessions;
+        this.sessions = [...evt.sessions];
         this.notify();
         break;
       case 'message': {
         const msg = evt.message as MessageRecord;
-        // Update sessions: bring this conversation to front.
-        const sIdx = this.sessions.findIndex((s) => s.id === evt.session.id);
-        if (sIdx >= 0) this.sessions.splice(sIdx, 1);
-        this.sessions.unshift(evt.session);
-        // If active conversation, append to thread (de-dup on id, and try to
-        // reconcile any optimistic message with same text/self).
-        const arr = this.threads.get(msg.conversationId) ?? [];
-        if (!arr.some((m) => m.id === msg.id)) {
-          // Reconcile optimistic
+        // Sessions: bring this conversation to the top. Build a NEW
+        // array so Svelte's $derived recomputes (Object.is on a mutated
+        // array returns true → no re-render).
+        const newSessions = this.sessions.filter((s) => s.id !== evt.session.id);
+        newSessions.unshift(evt.session);
+        this.sessions = newSessions;
+        // Thread: de-dup by id, reconcile optimistic, append. Same
+        // immutability discipline — replace the array, don't push.
+        const prev = this.threads.get(msg.conversationId) ?? [];
+        if (!prev.some((m) => m.id === msg.id)) {
+          let next = prev;
           if (msg.self) {
-            const pendingIdx = arr.findIndex(
-              (m) =>
-                m.self &&
-                this.pendingNonces.has(m.id) &&
-                m.text === msg.text,
+            const pendingIdx = next.findIndex(
+              (m) => m.self && this.pendingNonces.has(m.id) && m.text === msg.text,
             );
             if (pendingIdx >= 0) {
-              this.pendingNonces.delete(arr[pendingIdx].id);
-              arr.splice(pendingIdx, 1);
+              this.pendingNonces.delete(next[pendingIdx].id);
+              next = [...next.slice(0, pendingIdx), ...next.slice(pendingIdx + 1)];
             }
           }
-          arr.push(msg);
-          this.threads.set(msg.conversationId, arr);
+          this.threads.set(msg.conversationId, [...next, msg]);
           if (msg.kind === 'image' && this.activeId === msg.conversationId) {
             // Eager prefetch when conversation is open.
             this.requestImage(msg.id);

@@ -41,7 +41,11 @@ const hub = createWsHub({
     ws.send(JSON.stringify(evt2));
   },
   onCommand: async (cmd) => {
-    await handleCommand(cmd);
+    try {
+      await handleCommand(cmd);
+    } catch (err) {
+      console.error('[ws] command failed:', cmd.type, (err as Error).message);
+    }
   },
 });
 
@@ -94,19 +98,47 @@ async function handleCommand(cmd: ClientCommand): Promise<void> {
 }
 
 async function sendText(conversationId: string, text: string): Promise<void> {
+  console.log(`[send] request conv=${conversationId} text=${JSON.stringify(text.slice(0, 40))}`);
   const wechaty = await getWechaty();
-  // Try room first, then contact. wechaty's load() returns a stub regardless,
-  // so we need to disambiguate by attempting Room.find / Contact.find.
-  const room = await wechaty.Room.find({ id: conversationId }).catch(() => null);
+  let room;
+  try {
+    room = await wechaty.Room.find({ id: conversationId });
+  } catch (err) {
+    console.error('[send] Room.find threw:', (err as Error).message);
+    room = null;
+  }
   if (room) {
-    await room.say(text);
-    return;
+    try {
+      await room.say(text);
+      console.log(`[send] room.say ok conv=${conversationId}`);
+      return;
+    } catch (err) {
+      const e = err as Error & { code?: number; details?: string };
+      console.error('[send] room.say failed conv=' + conversationId,
+        'code=', e.code, 'msg=', e.message, 'details=', e.details);
+      throw err;
+    }
   }
-  const contact = await wechaty.Contact.find({ id: conversationId }).catch(() => null);
+  let contact;
+  try {
+    contact = await wechaty.Contact.find({ id: conversationId });
+  } catch (err) {
+    console.error('[send] Contact.find threw:', (err as Error).message);
+    contact = null;
+  }
   if (contact) {
-    await contact.say(text);
-    return;
+    try {
+      await contact.say(text);
+      console.log(`[send] contact.say ok conv=${conversationId}`);
+      return;
+    } catch (err) {
+      const e = err as Error & { code?: number; details?: string };
+      console.error('[send] contact.say failed conv=' + conversationId,
+        'code=', e.code, 'msg=', e.message, 'details=', e.details);
+      throw err;
+    }
   }
+  console.error(`[send] unknown conversation id: ${conversationId}`);
   throw new Error(`unknown conversation id: ${conversationId}`);
 }
 
